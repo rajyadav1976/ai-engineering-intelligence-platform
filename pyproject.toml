@@ -28,3 +28,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.3",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    "packages/llm",
+]
+asyncio_mode = "auto"
