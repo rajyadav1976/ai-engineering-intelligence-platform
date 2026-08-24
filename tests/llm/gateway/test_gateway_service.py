@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
 
 from engineering_intelligence_llm.domain.models import (
@@ -37,7 +39,7 @@ class FakeLLMProvider:
     async def stream(
         self,
         request: LLMRequest,
-    ):
+    ) -> AsyncIterator[LLMResponse]:
         yield LLMResponse(
             content="fake",
             model=request.model or "fake-model",
@@ -51,10 +53,25 @@ class FakeLLMProvider:
         )
 
 
+class FakeRouter:
+    """Fake router for Gateway unit tests."""
+
+    def __init__(self, provider: FakeLLMProvider) -> None:
+        self._provider = provider
+
+    def select(
+        self,
+        request: LLMRequest,
+    ) -> FakeLLMProvider:
+        return self._provider
+
+
 @pytest.mark.asyncio
-async def test_gateway_delegates_generate_to_provider() -> None:
+async def test_gateway_routes_generate_to_selected_provider() -> None:
     provider = FakeLLMProvider()
-    gateway = LLMGatewayService(provider=provider)
+    router = FakeRouter(provider)
+
+    gateway = LLMGatewayService(router=router)
 
     request = LLMRequest(
         model="fake-model",
@@ -71,3 +88,30 @@ async def test_gateway_delegates_generate_to_provider() -> None:
     assert response.content == "fake response"
     assert response.model == "fake-model"
     assert response.provider == "fake"
+
+
+@pytest.mark.asyncio
+async def test_gateway_routes_stream_to_selected_provider() -> None:
+    provider = FakeLLMProvider()
+    router = FakeRouter(provider)
+
+    gateway = LLMGatewayService(router=router)
+
+    request = LLMRequest(
+        model="fake-model",
+        messages=(
+            Message(
+                role=MessageRole.USER,
+                content="Hello",
+            ),
+        ),
+    )
+
+    responses = [
+        response
+        async for response in gateway.stream(request)
+    ]
+
+    assert len(responses) == 1
+    assert responses[0].content == "fake"
+    assert responses[0].provider == "fake"
